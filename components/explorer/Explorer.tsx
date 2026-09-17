@@ -15,6 +15,7 @@ import {
 import GitHubStatus from "./GitHubStatus";
 import GraphCanvas from "./GraphCanvas";
 import PathDetails from "./PathDetails";
+import ConnectionReport from "./ConnectionReport";
 import DiscoveryConsole from "./DiscoveryConsole";
 import { visibleGraph } from "@/lib/graph/visible";
 import { useConnectionSearch } from "./useConnectionSearch";
@@ -294,6 +295,14 @@ export default function Explorer() {
                 {isDemo ? "SIMULATION" : busy ? "SCANNING" : "PUBLIC SIGNALS"}
               </span>
             </div>
+            {result.path.length > 0 && (
+              <ConnectionReport
+                key={`${isDemo}:${result.path[0]}:${result.path.at(-1)}`}
+                result={result}
+                busy={busy}
+                isDemo={isDemo}
+              />
+            )}
             <DiscoveryConsole batch={batch} phase={phase} isDemo={isDemo} />
             <GraphCanvas
               graph={graph}

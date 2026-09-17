@@ -34,6 +34,7 @@ The browser receives a random HttpOnly session cookie. OAuth tokens are encrypte
 - Focus the canvas and use **WASD** to travel, **Q/E** to descend/ascend.
 - **Fly through route** visits each point on the path with a five-second cadence. Manual navigation interrupts the tour.
 - **Return to overview** restores a wide view.
+- **Connection report** opens when a real route is first found. Close it to keep navigating, then reopen it at any time while that route exists. The report updates during exploration, shows the exact follow direction for each hop, links to public profiles, and can be copied as text. **Preview sample report** demonstrates it without signing in.
 - **Pause exploration** interrupts the current request or animation hold; **Resume exploration** continues from its saved page cursor.
 
 ## What a result means
