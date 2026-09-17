@@ -24,7 +24,7 @@ describe("server credential boundary", () => {
     expect(transport).toHaveBeenCalledWith(
       "https://api.github.com/users/a",
       expect.objectContaining({
-        redirect: "error",
+        redirect: "manual",
         headers: expect.objectContaining({
           Authorization: "Bearer test-secret",
         }),
@@ -106,4 +106,13 @@ describe("server credential boundary", () => {
     expect(response.status).toBe(502);
     expect(await response.text()).not.toContain("secret");
   });
+});
+
+it("rejects upstream redirects without forwarding their destination or credentials", async () => {
+  const transport = vi.fn().mockResolvedValue(new Response(null, { status: 302, headers: { location: "https://untrusted.test" } }));
+  const response = await proxyGitHub(request("users/a"), "secret", transport);
+  expect(response.status).toBe(502);
+  expect(response.headers.has("location")).toBe(false);
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(transport.mock.calls[0][1].redirect).toBe("manual");
 });

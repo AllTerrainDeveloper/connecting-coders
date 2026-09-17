@@ -64,7 +64,7 @@ export async function proxyGitHub(
   try {
     const upstream = await transport(`https://api.github.com${path}`, {
       method: "GET",
-      redirect: "error",
+      redirect: "manual",
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]),
       headers: {
         Accept: "application/vnd.github+json",
@@ -73,6 +73,8 @@ export async function proxyGitHub(
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     });
+    if (upstream.status >= 300 && upstream.status < 400)
+      return failure("GitHub returned an unexpected redirect.", 502);
     const headers = new Headers(responseHeaders);
     for (const key of [
       "link",

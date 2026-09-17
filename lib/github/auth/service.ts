@@ -161,7 +161,7 @@ export class GitHubAuth {
         "https://github.com/login/oauth/access_token",
         {
           method: "POST",
-          redirect: "error",
+          redirect: "manual",
           signal: AbortSignal.timeout(12_000),
           headers: {
             Accept: "application/json",
@@ -191,7 +191,7 @@ export class GitHubAuth {
       const profileResponse = await this.transport(
         "https://api.github.com/user",
         {
-          redirect: "error",
+          redirect: "manual",
           signal: AbortSignal.timeout(12_000),
           headers: {
             Accept: "application/vnd.github+json",
