@@ -13,8 +13,7 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "dev:github": "CONNECTING_CODERS_GH_AUTH=1 node scripts/run-framework.mjs dev"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

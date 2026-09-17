@@ -15,9 +15,17 @@ npm run lint
 npm run build
 ```
 
-Use the local URL printed by the server. For authenticated local exploration, sign in with `gh auth login` and run `npm run dev:github` (optionally `-- --port 5175`). The server reads your existing GitHub CLI credential into memory; it is never written to environment files or included in builds. Restart the server after changing CLI accounts.
+Use the local URL printed by the server. Live exploration requires **Connect GitHub**. The illustrative graph works without connecting.
 
-For the hosted private Site, set `GITHUB_TOKEN` as a **secret runtime variable** and redeploy. Use a fine-grained personal access token with public-repository access and no additional permissions, plus an expiration date. Never use `VITE_`/`NEXT_PUBLIC_` variables or paste tokens into browser storage. Without that secret the hosted provider uses anonymous GitHub access. Its status badge reports the actual quota. Hosted API requests require a signed-in Site visitor; the Site's private access policy controls who can consume the shared token allowance.
+## GitHub connection
+
+The hosted Site keeps its existing ChatGPT access policy. GitHub OAuth is a separate public-data connection: each visitor authorizes their own GitHub account, sees their username and allowance, and can disconnect. There is no shared owner token or automatic GitHub CLI login.
+
+Configure `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_SESSION_KEY` (32 random bytes encoded as 64 hex characters), and `GITHUB_APP_URL` as server runtime values. Keep the secret and encryption key marked secret in Sites. Register the exact callback `${GITHUB_APP_URL}/api/github/auth/callback`; use no additional OAuth scopes. Enable expiring GitHub access tokens. The registered app permits the published origin and `http://localhost:5175` for local testing.
+
+For development, place values in ignored `.env.local`, set `GITHUB_APP_URL=http://localhost:5175`, apply the generated D1 migration to the local database, and run `npm run dev -- --port 5175`. Local Site sign-in uses the starter's development sign-in link. Never commit credentials or include them in deployment archives. The private deployed Site supplies the viewer identity itself.
+
+The browser receives a random HttpOnly session cookie. OAuth tokens are encrypted in D1 and bound to the Site visitor and session. Sessions end on Disconnect, expire after at most eight hours, and never refresh themselves. Browser session restoration can preserve session cookies, so the server expiry remains authoritative. Disconnect deletes the app session; users can revoke the app's GitHub authorization in GitHub settings. Callback state is one-use and expires after ten minutes; S256 PKCE protects the code exchange.
 
 ## Controls
 
@@ -53,7 +61,7 @@ All discovered evidence remains in memory. To bound GPU work, the viewport shows
 | `components/explorer/GraphCanvas.tsx`        | React lifecycle bridge; lazy loads the 3D renderer                                     |
 | `components/explorer/DiscoveryConsole.tsx`   | Names and scan choreography driven by each fetched page                                |
 
-`lib/github/proxy.ts` is the shared server credential boundary: fixed public endpoints, bounded queries, sanitized responses and forwarded quota headers. The hosted route reads the secret Worker binding; the optional Vite development plugin uses GitHub CLI sign-in. Neither exports a credential to client code.
+`lib/github/proxy.ts` is the shared server credential boundary: fixed public endpoints, bounded queries, sanitized responses and forwarded quota headers. The hosted route retrieves only the current visitor’s encrypted OAuth session from D1. Credentials never reach client code.
 
 See [architecture and scaling decisions](docs/architecture.md).
 

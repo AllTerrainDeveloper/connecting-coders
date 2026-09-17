@@ -21,6 +21,7 @@ import { visibleGraph } from "@/lib/graph/visible";
 import { useConnectionSearch } from "./useConnectionSearch";
 export default function Explorer() {
   const mapSection = useRef<HTMLElement>(null);
+  const [githubConnected, setGitHubConnected] = useState(false);
   const [source, setSource] = useState("yyx990803");
   const [target, setTarget] = useState("torvalds");
   const [maxHops, setMaxHops] = useState(4);
@@ -84,6 +85,7 @@ export default function Explorer() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
+                if (!githubConnected) return;
                 setSelected(null);
                 setResumeDirty(false);
                 void search(source, target, maxHops, mode);
@@ -191,11 +193,11 @@ export default function Explorer() {
                   <LoaderCircle size={17} className="spin" /> Pause exploration
                 </button>
               ) : (
-                <button key="start" className="primary" type="submit">
-                  Initiate trace <ArrowRight size={18} />
+                <button key="start" className="primary" type="submit" disabled={!githubConnected}>
+                  {githubConnected ? "Initiate trace" : "Connect GitHub to trace"} <ArrowRight size={18} />
                 </button>
               )}
-              {canResume && !resumeDirty && (
+              {canResume && !resumeDirty && githubConnected && (
                 <button
                   type="button"
                   className="resume-button"
@@ -205,7 +207,7 @@ export default function Explorer() {
                 </button>
               )}
             </form>
-            <GitHubStatus remaining={isDemo ? undefined : result.remaining} />
+            <GitHubStatus remaining={isDemo ? undefined : result.remaining} searchError={error} onConnected={setGitHubConnected} />
             <div className="search-meta">
               <span>
                 {busy

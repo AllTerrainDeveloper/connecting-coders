@@ -2,16 +2,17 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { Graph } from "../graph/types";
 import { layoutSpace } from "../graph/layout3d";
+import { revealTiming, revealOpacity } from "./reveal";
 import { connectionKey } from "../graph/path";
 interface SignalNode {
   id: string;
   position: THREE.Vector3;
-  origin: THREE.Vector3;
   target: THREE.Vector3;
   alpha: number;
   targetAlpha: number;
   started: number;
   delay: number;
+  duration: number;
   label: THREE.Sprite;
   active: boolean;
 }
@@ -145,21 +146,11 @@ export class SpaceScene {
     this.scene.add(this.points, this.labels);
     this.edges = new THREE.LineSegments(
       this.lineGeometry,
-      new THREE.LineBasicMaterial({
-        color: 0x267a51,
-        transparent: true,
-        opacity: 0.24,
-        depthWrite: false,
-      }),
+      this.lineMaterial(0x267a51, 0.24),
     );
     this.route = new THREE.LineSegments(
       this.routeGeometry,
-      new THREE.LineBasicMaterial({
-        color: 0x8bffc1,
-        transparent: true,
-        opacity: 0.9,
-        depthWrite: false,
-      }),
+      this.lineMaterial(0x8bffc1, 0.9),
     );
     this.scene.add(this.edges, this.route);
     const starPositions = new Float32Array(2400 * 3);
@@ -261,14 +252,14 @@ export class SpaceScene {
     if (this.disposed) return;
     const now = performance.now();
     this.batchStarted = now;
-    const positions = layoutSpace(graph, path);
+    const positions = layoutSpace(graph, []);
     const present = new Set(graph.nodes.map((n) => n.login));
     const pathChanged = path.join(">") !== this.path.join(">");
     this.path = [...path];
     this.edgeData = graph.edges;
     for (const [id, node] of this.nodes)
       if (!present.has(id)) node.targetAlpha = 0;
-    for (const [i, coder] of graph.nodes.entries()) {
+    for (const coder of graph.nodes) {
       const next = positions.get(coder.login)!;
       let node = this.nodes.get(coder.login);
       if (!node) {
@@ -280,30 +271,18 @@ export class SpaceScene {
           if (retired) this.removeNode(retired.id);
           else continue;
         }
-        const parent = graph.edges.find(
-          (e) => e.target === coder.login && this.nodes.has(e.source),
-        );
-        const origin = parent
-          ? this.nodes.get(parent.source)!.position.clone()
-          : new THREE.Vector3(0, 0, -90);
         node = {
           id: coder.login,
-          position: origin.clone(),
-          origin,
+          position: new THREE.Vector3(next.x, next.y, next.z),
           target: new THREE.Vector3(next.x, next.y, next.z),
           alpha: 0,
           targetAlpha: 1,
           started: now,
-          delay: Math.min(i * 32, 2800),
+          ...revealTiming(),
           label: this.label(coder.login),
           active: false,
         };
         this.nodes.set(coder.login, node);
-      } else {
-        node.origin.copy(node.position);
-        node.target.set(next.x, next.y, next.z);
-        node.started = now;
-        node.delay = 0;
       }
       node.active = path.includes(coder.login);
       node.targetAlpha = 1;
@@ -321,6 +300,18 @@ export class SpaceScene {
       this.tour = null;
     }
   }
+  private lineMaterial(color: number, opacity: number) {
+    return new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        tint: { value: new THREE.Color(color) },
+        opacity: { value: opacity },
+      },
+      vertexShader: `attribute float alpha; varying float vAlpha; void main(){vAlpha=alpha;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+      fragmentShader: `uniform vec3 tint; uniform float opacity; varying float vAlpha; void main(){gl_FragColor=vec4(tint,opacity*vAlpha);}`,
+    });
+  }
   private removeNode(id: string) {
     const node = this.nodes.get(id);
     if (!node) return;
@@ -336,15 +327,14 @@ export class SpaceScene {
     let index = 0;
     this.indexToId = [];
     for (const [id, node] of this.nodes) {
-      const t = this.reduced.matches
-        ? 1
-        : ease((now - node.started - node.delay) / 2200);
-      node.position.lerpVectors(node.origin, node.target, t);
-      node.alpha = THREE.MathUtils.lerp(
-        node.alpha,
-        node.targetAlpha,
-        this.reduced.matches ? 1 : 1 - Math.exp(-dt / 220),
-      );
+      node.alpha =
+        node.targetAlpha === 1
+          ? revealOpacity(now - node.started, node, this.reduced.matches)
+          : THREE.MathUtils.lerp(
+              node.alpha,
+              0,
+              this.reduced.matches ? 1 : 1 - Math.exp(-dt / 280),
+            );
       if (node.targetAlpha === 0 && node.alpha < 0.005) {
         this.removeNode(id);
         continue;
@@ -379,6 +369,8 @@ export class SpaceScene {
       this.pointGeometry.attributes[key].needsUpdate = true;
     const lines: number[] = [],
       route: number[] = [];
+    const lineAlphas: number[] = [],
+      routeAlphas: number[] = [];
     const routeKeys = new Set(
       this.path.slice(1).map((id, i) => connectionKey(this.path[i], id)),
     );
@@ -386,22 +378,14 @@ export class SpaceScene {
       const a = this.nodes.get(edge.source),
         b = this.nodes.get(edge.target);
       if (!a || !b) continue;
-      const target = routeKeys.has(connectionKey(edge.source, edge.target))
-        ? route
-        : lines;
-      const progress = this.reduced.matches
-        ? 1
-        : ease(
-            (now -
-              Math.max(a.started, b.started) -
-              Math.max(a.delay, b.delay)) /
-              2400,
-          );
-      const end = a.position.clone().lerp(b.position, progress);
-      target.push(...a.position.toArray(), ...end.toArray());
+      const isRoute = routeKeys.has(connectionKey(edge.source, edge.target));
+      const target = isRoute ? route : lines;
+      const opacity = Math.min(a.alpha, b.alpha);
+      target.push(...a.position.toArray(), ...b.position.toArray());
+      (isRoute ? routeAlphas : lineAlphas).push(opacity, opacity);
     }
-    this.updateLines(this.lineGeometry, lines);
-    this.updateLines(this.routeGeometry, route);
+    this.updateLines(this.lineGeometry, lines, lineAlphas);
+    this.updateLines(this.routeGeometry, route, routeAlphas);
     if (this.tour && now >= this.tour.next) {
       const id = this.path[this.tour.index];
       if (id) {
@@ -448,6 +432,7 @@ export class SpaceScene {
       const step = Math.min(this.path.length - 2, Math.floor(progress));
       const a = this.nodes.get(this.path[step]),
         b = this.nodes.get(this.path[step + 1]);
+      this.traveler.visible = Boolean(a && b && a.alpha > 0.85 && b.alpha > 0.85);
       if (a && b)
         this.traveler.position.lerpVectors(
           a.position,
@@ -458,7 +443,11 @@ export class SpaceScene {
     this.renderer.render(this.scene, this.camera);
     this.tickId = requestAnimationFrame(this.frame);
   };
-  private updateLines(geometry: THREE.BufferGeometry, data: number[]) {
+  private updateLines(
+    geometry: THREE.BufferGeometry,
+    data: number[],
+    alphas: number[],
+  ) {
     const existing = geometry.getAttribute("position");
     if (!existing || existing.array.length < data.length) {
       geometry.setAttribute(
@@ -474,6 +463,17 @@ export class SpaceScene {
     ) as THREE.BufferAttribute;
     (attribute.array as Float32Array).set(data);
     attribute.needsUpdate = true;
+    let opacity = geometry.getAttribute("alpha") as
+      THREE.BufferAttribute | undefined;
+    if (!opacity || opacity.array.length < alphas.length) {
+      opacity = new THREE.BufferAttribute(
+        new Float32Array(geometry.getAttribute("position").array.length / 3),
+        1,
+      ).setUsage(THREE.DynamicDrawUsage);
+      geometry.setAttribute("alpha", opacity);
+    }
+    (opacity.array as Float32Array).set(alphas);
+    opacity.needsUpdate = true;
     geometry.setDrawRange(0, data.length / 3);
     geometry.computeBoundingSphere();
   }
@@ -562,7 +562,9 @@ export class SpaceScene {
     );
     this.raycaster.params.Points = { threshold: 5 };
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    return this.raycaster.intersectObject(this.points)[0];
+    return this.raycaster
+      .intersectObject(this.points)
+      .find((hit) => hit.index !== undefined && this.alphas[hit.index] > 0.15);
   }
   private up = (event: PointerEvent) => {
     if (

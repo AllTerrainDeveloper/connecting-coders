@@ -92,7 +92,7 @@ export class GitHubClient implements GraphProvider {
       );
     }
     if (response.status === 401)
-      throw new GitHubError("GitHub access needs reconnecting. Check your server sign-in and reload the app.", "auth");
+      throw new GitHubError("Your GitHub session has ended. Connect your account again to continue.", "auth");
     if (response.status === 404)
       throw new GitHubError(
         "That GitHub user could not be found. Check the username.",

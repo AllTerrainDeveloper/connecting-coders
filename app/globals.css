@@ -1273,3 +1273,13 @@ input:disabled {
 .github-status { display: flex; align-items: center; gap: 10px; color: #71e6af; padding: 12px 0 4px; font-size: 11px; }
 .github-status strong { font-weight: 500; display: block; }
 .github-status span { display: block; color: #829c90; margin-top: 3px; font-size: 10px; }
+
+.github-account { margin-top: 14px; padding: 12px; border: 1px solid #224132; border-radius: 8px; background: #08160f; }
+.github-account .github-status { padding: 0; font-size: 13px; }
+.github-account .github-status span { font-size: 12px; line-height: 1.5; }
+.github-account form { display: block; margin: 0; }
+.github-connect, .github-disconnect { display: flex; width: 100%; align-items: center; justify-content: center; gap: 9px; margin-top: 12px; padding: 11px; border: 1px solid #47ffae66; border-radius: 5px; color: #bdffda; background: #153b28; font: inherit; font-size: 14px; cursor: pointer; text-decoration: none; transition: background 250ms, border-color 250ms, opacity 250ms; }
+.github-connect:hover { background: #205339; border-color: #47ffae; }
+.github-connect:disabled { opacity: .5; cursor: not-allowed; }
+.github-disconnect { background: transparent; border-color: #284836; color: #a0bbaa; font-size: 12px; }
+.github-notice { margin: 10px 0 0; font-size: 12px; line-height: 1.5; color: #a0bbaa; }
