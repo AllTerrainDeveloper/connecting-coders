@@ -19,13 +19,13 @@ Use the local URL printed by the server. Live exploration requires **Connect Git
 
 ## GitHub connection
 
-The hosted Site keeps its existing ChatGPT access policy. GitHub OAuth is a separate public-data connection: each visitor authorizes their own GitHub account, sees their username and allowance, and can disconnect. There is no shared owner token or automatic GitHub CLI login.
+The app runs in your Cloudflare account at https://connecting-coders.prismiwi.workers.dev. GitHub is the only login. The left pane starts with **Connect GitHub**; once connected, the verified GitHub username is the fixed source and the only handle input is the destination. There is no shared owner token or automatic GitHub CLI login.
 
-Configure `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_SESSION_KEY` (32 random bytes encoded as 64 hex characters), and `GITHUB_APP_URL` as server runtime values. Keep the secret and encryption key marked secret in Sites. Register the exact callback `${GITHUB_APP_URL}/api/github/auth/callback`; use no additional OAuth scopes. Enable expiring GitHub access tokens. The registered app permits the published origin and `http://localhost:5175` for local testing.
+`wrangler.jsonc` declares the Worker, public OAuth client ID, canonical origin and D1 binding. `GITHUB_CLIENT_SECRET` and `GITHUB_SESSION_KEY` (32 random bytes encoded as 64 hex characters) are Cloudflare Worker secrets. Register the exact callback `${GITHUB_APP_URL}/api/github/auth/callback`; request no additional OAuth scopes. Keep the encryption key stable across deployments.
 
-For development, place values in ignored `.env.local`, set `GITHUB_APP_URL=http://localhost:5175`, apply the generated D1 migration to the local database, and run `npm run dev -- --port 5175`. Local Site sign-in uses the starter's development sign-in link. Never commit credentials or include them in deployment archives. The private deployed Site supplies the viewer identity itself.
+For development, copy `.env.example` to ignored `.env.local`, provide your local OAuth credentials, run `npm run db:migrate:local`, then `npm run dev -- --port 5175`. Register `http://localhost:5175/api/github/auth/callback`. Never commit credentials. Run `npm run deploy` after authenticating Wrangler to this Cloudflare account; it builds, applies pending D1 migrations, then deploys the generated Worker. The previous Sites deployment is independent and is not updated by this command.
 
-The browser receives a random HttpOnly session cookie. OAuth tokens are encrypted in D1 and bound to the Site visitor and session. Sessions end on Disconnect, expire after at most eight hours, and never refresh themselves. Browser session restoration can preserve session cookies, so the server expiry remains authoritative. Disconnect deletes the app session; users can revoke the app's GitHub authorization in GitHub settings. Callback state is one-use and expires after ten minutes; S256 PKCE protects the code exchange.
+The browser receives a random HttpOnly session cookie. OAuth tokens are encrypted in D1 and bound to an opaque browser identity and session. Sessions end on Disconnect, expire after at most eight hours, and never refresh themselves. Browser session restoration can preserve session cookies, so the server expiry remains authoritative. Disconnect deletes the app session; users can revoke the app's GitHub authorization in GitHub settings. Callback state is one-use and expires after ten minutes; S256 PKCE protects the code exchange.
 
 ## Controls
 
@@ -38,7 +38,7 @@ The browser receives a random HttpOnly session cookie. OAuth tokens are encrypte
 
 ## What a result means
 
-The default **Either direction** mode treats Alice following Bob *or* Bob following Alice as a traversable connection. **Mutual follows only** requires both observed follows for every hop. The evidence inspector always preserves who actually follows whom; traversal does not invent reciprocal evidence. A route suggests a possible introduction; it does not verify friendship, contactability or willingness to introduce. Intermediaries = `max(0, hops − 1)`.
+The default **Followers + following** mode treats Alice following Bob *or* Bob following Alice as a traversable connection. **Mutual follows only** requires both observed follows for every hop. The evidence inspector always preserves who actually follows whom; traversal does not invent reciprocal evidence. A route suggests a possible introduction; it does not verify friendship, contactability or willingness to introduce. Intermediaries = `max(0, hops − 1)`.
 
 The app searches public neighborhoods within the selected hop boundary, follows pagination, and continues after finding a path. The shortest route is recalculated over the evidence collected so far. No global shortest-path guarantee is made while exploration is incomplete. Private profiles and unavailable data can hide connections.
 

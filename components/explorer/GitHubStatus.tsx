@@ -5,7 +5,6 @@ import { GitFork, ShieldCheck, LogOut, LoaderCircle } from "lucide-react";
 const schema = z.object({
   configured: z.boolean(),
   authenticated: z.boolean(),
-  needsSiteSignIn: z.boolean(),
   login: z.string().optional(),
   expires: z.number().optional(),
   expired: z.boolean().optional(),
@@ -24,7 +23,7 @@ export default function GitHubStatus({
 }: {
   remaining?: number;
   searchError: string;
-  onConnected: (connected: boolean) => void;
+  onConnected: (login: string | null) => void;
 }) {
   const [status, setStatus] = useState<z.infer<typeof schema> | null>(null);
   const [failed, setFailed] = useState(false);
@@ -57,11 +56,11 @@ export default function GitHubStatus({
 
         setStatus(value);
         setFailed(false);
-        onConnected(value.authenticated);
+        onConnected(value.authenticated && value.login ? value.login : null);
       } catch {
         if (!abort.signal.aborted) {
           setFailed(true);
-          onConnected(false);
+          onConnected(null);
         }
       }
     };
@@ -86,14 +85,17 @@ export default function GitHubStatus({
           <GitFork size={17} />
         )}
         <div>
+          {status?.authenticated && (
+            <span className="account-label">YOU · STARTING POINT</span>
+          )}
           <strong>
             {failed
               ? "GitHub connection unavailable"
               : !status
                 ? "Checking your session…"
                 : status.authenticated
-                  ? `Connected as @${status.login}`
-                  : "Your GitHub, your connections"}
+                  ? `@${status.login}`
+                  : "Connect your GitHub"}
           </strong>
           {status?.authenticated ? (
             <span>
@@ -102,7 +104,7 @@ export default function GitHubStatus({
                 : "Using your GitHub allowance"}
             </span>
           ) : (
-            <span>Connect for a personal exploration session.</span>
+            <span>Your account is your starting point.</span>
           )}
         </div>
       </div>
@@ -114,14 +116,6 @@ export default function GitHubStatus({
         >
           Retry connection
         </button>
-      ) : status?.needsSiteSignIn ? (
-        <a
-          className="github-connect"
-          href="/signin-with-chatgpt?return_to=%2F"
-          target="_top"
-        >
-          Sign in to continue
-        </a>
       ) : status?.authenticated ? (
         <form action="/api/github/auth/logout" method="post" target="_top">
           <button type="submit" className="github-disconnect">

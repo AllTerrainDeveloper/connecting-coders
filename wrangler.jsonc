@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "connecting-coders",
+  "account_id": "ad54414c4385c59e1aac7c0ba2010bb2",
+  "main": "vinext/server/fetch-handler",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } },
+  "vars": {
+    "GITHUB_CLIENT_ID": "Ov23liKR9Rh8mKJMHEyS",
+    "GITHUB_APP_URL": "https://connecting-coders.prismiwi.workers.dev",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "connecting-coders-sessions",
+      "database_id": "e1d565b4-185b-4569-b2f8-5bb7bfcc3a1e",
+      "migrations_dir": "drizzle",
+    },
+  ],
+}

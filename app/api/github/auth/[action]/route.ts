@@ -1,15 +1,10 @@
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { browserIdentity, startBrowserLogin } from "@/lib/github/auth/browser";
 import { githubAuth } from "@/lib/github/auth/runtime";
 import { privateHeaders } from "@/lib/github/auth/service";
 export const dynamic = "force-dynamic";
 async function handle(request: Request) {
   try {
-    const viewer = await getChatGPTUser();
-    if (!viewer)
-      return Response.json(
-        { message: "Sign in to this site first, then connect GitHub." },
-        { status: 401, headers: privateHeaders },
-      );
+    const viewer = await browserIdentity(request);
     const auth = githubAuth();
     if (!auth)
       return Response.json(
@@ -21,11 +16,16 @@ async function handle(request: Request) {
       );
     const action = new URL(request.url).pathname.split("/").at(-1);
     if (action === "start" && request.method === "POST")
-      return await auth.start(request, viewer.userId);
+      return await startBrowserLogin(auth, request);
+    if (!viewer)
+      return Response.json(
+        { message: "Connect GitHub to continue." },
+        { status: 401, headers: privateHeaders },
+      );
     if (action === "callback" && request.method === "GET")
-      return await auth.callback(request, viewer.userId);
+      return await auth.callback(request, viewer);
     if (action === "logout" && request.method === "POST")
-      return await auth.logout(request, viewer.userId);
+      return await auth.logout(request, viewer);
     return new Response(null, { status: 405, headers: privateHeaders });
   } catch {
     return Response.json(

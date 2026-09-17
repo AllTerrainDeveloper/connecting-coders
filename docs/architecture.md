@@ -44,11 +44,11 @@ The adapter normalizes usernames, rejects invalid input and organization endpoin
 
 The cache holds at most 256 responses for five minutes; hits do not extend freshness. `Link` determines pagination. Rate-limit headers update quota display; reset/retry delays establish a session-wide cooldown. Tokens are neither requested nor stored in the browser. All browser requests target `/api/github/*`. The proxy accepts only public profiles, followers, following and a sanitized quota status endpoint. It rejects writes, unknown paths and arbitrary query parameters, forbids upstream redirects, strips profile fields beyond the app schema and only forwards pagination/quota headers. Errors never echo transport exceptions or credentials.
 
-The hosted Worker checks the Site viewer identity and retrieves that visitor's GitHub OAuth session. There is no shared token and no CLI-authentication fallback. The Site remains owner-private; GitHub connection never changes Site access policy.
+The Cloudflare Worker uses GitHub as its sole authentication provider. `lib/github/auth/browser.ts` establishes a random HttpOnly, host-only browser nonce after a valid same-origin login start. Its hash binds attempts and sessions to that browser. The nonce alone grants no access: the separately stored OAuth session is still required. Forged hosting identity headers are ignored. There is no shared token or CLI-authentication fallback. The login page and illustrative graph are public; live API access requires the visitor's own GitHub session.
 
 `lib/github/auth/service.ts` owns public-data OAuth authorization, S256 PKCE, one-use state, same-origin POST validation, callback verification, account lookup, session replacement and logout. `D1AuthStore` uses prepared statements and atomically consumes callback state with `DELETE … RETURNING`. Tokens and PKCE verifiers use AES-GCM encryption with context binding; opaque cookie identifiers are hashed in storage. The cookie is HttpOnly, SameSite=Lax, Secure on HTTPS, and has no persistent Max-Age. The server enforces an eight-hour maximum or the provider token expiry, whichever comes first. No refresh token is retained. Disconnect invalidates the stored session, including replay of its old cookie. GitHub app authorization persists until the user revokes it in GitHub settings.
 
-Status shows only username, expiry and quota. Invalid upstream credentials invalidate the local session. Missing setup is visible without exposing secrets. OAuth and storage failures are sanitized at the route boundary. Expired rows are purged on new authorization attempts. For a public multi-user deployment, add per-user authorization-start rate limits and scheduled expiry cleanup before increasing access.
+Status shows only username, expiry and quota. Invalid upstream credentials invalidate the local session. Missing setup is visible without exposing secrets. OAuth and storage failures are sanitized at the route boundary. Expired rows are purged on new authorization attempts. For higher traffic, add authorization-start rate limits and scheduled expiry cleanup.
 
 ## The 3D scene
 
@@ -66,10 +66,14 @@ Very long sessions can still accumulate substantial browser memory. This impleme
 
 ## Production scaling
 
-1. **Multi-user authentication and budgets:** evolve the current server token into a GitHub App provider; enforce per-user and shared budgets before expanding access. Authenticated personal REST requests generally allow 5,000/hour but still have secondary limits.
+1. **Multi-user authentication and budgets:** consider a GitHub App provider for installation-based access; enforce per-user and shared budgets before expanding access. Authenticated personal REST requests generally allow 5,000/hour but still have secondary limits.
 2. **Durable evidence and cursor store:** preserve directed edges with observation times and provenance. Track per-list completeness, page cursors and refresh state separately. An incomplete list is never equivalent to an empty one.
 3. **Bounded ingestion queue:** deduplicate work, checkpoint pages, respect cooldowns, refresh stale edges and stream committed batches to clients. Never answer quota errors with bursts of retries.
 4. **Indexed graph search:** PostgreSQL adjacency indexes are sufficient for a moderate graph. Use specialized infrastructure only after measurement. Return coverage and snapshot metadata alongside routes.
 5. **Larger 3D scenes:** move layout/search off the main thread, cluster distant communities and use label level-of-detail. Keep a text route and accessible controls available.
 
 Repository co-contribution or review evidence could be added later, but must remain distinct from follows. Sharing a repository alone does not establish that two people know one another. No automated outreach is implemented.
+
+## Cloudflare deployment
+
+The source `wrangler.jsonc` is the single deployment configuration. Vite builds the Vinext fetch handler into `dist/server` and static assets into `dist/client`; the generated Wrangler config retains the real D1 binding. `npm run deploy` applies the versioned SQL migrations before publishing. Worker secrets are provisioned separately and never bundled. Invocation logging is disabled so OAuth callback URLs are not automatically stored in request logs; sanitized application errors remain enabled. GitHub redirect URIs match the canonical Worker origin exactly. Existing Sites infrastructure remains untouched.

@@ -1162,49 +1162,6 @@ input:disabled {
   }
 }
 @media (max-width: 700px) {
-  .sidebar form {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    column-gap: 15px;
-    align-items: end;
-  }
-  .sidebar form > label[for="source"] {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  .sidebar form > label[for="target"] {
-    grid-column: 2;
-    grid-row: 1;
-    line-height: 1.5;
-  }
-  .sidebar .input-shell:has(#source) {
-    grid-column: 1;
-    grid-row: 2;
-  }
-  .sidebar .input-shell:has(#target) {
-    grid-column: 2;
-    grid-row: 2;
-  }
-  .sidebar .between-inputs {
-    display: none;
-  }
-  .sidebar .search-options {
-    grid-column: 1;
-    grid-row: 3;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .sidebar .primary {
-    grid-column: 2;
-    grid-row: 3;
-    font-size: 12px;
-    padding: 13px 8px;
-    gap: 8px;
-  }
-  .sidebar .resume-button {
-    grid-column: 1 / -1;
-    font-size: 12px;
-  }
   .sidebar .search-options label {
     font-size: 12px;
   }
@@ -1283,3 +1240,29 @@ input:disabled {
 .github-connect:disabled { opacity: .5; cursor: not-allowed; }
 .github-disconnect { background: transparent; border-color: #284836; color: #a0bbaa; font-size: 12px; }
 .github-notice { margin: 10px 0 0; font-size: 12px; line-height: 1.5; color: #a0bbaa; }
+
+/* GitHub identity is the origin; only the destination is editable. */
+.github-account { margin: 0 0 28px; padding: 18px; background: linear-gradient(135deg, #10281b, #08140f); border-color: #315b40; }
+.github-account .account-label { color: #83ad91; font: 9px var(--font-mono, monospace); letter-spacing: .13em; margin-bottom: 7px; }
+.github-account .github-status strong { font-size: 16px; overflow-wrap: anywhere; }
+.github-account .github-connect { min-height: 48px; background: #b1ffc3; color: #092214; border-color: #b1ffc3; font-weight: 700; }
+.github-account .github-connect:hover { background: #d0ffdb; box-shadow: 0 0 28px #72fa9b26; }
+.github-account .github-disconnect { margin-top: 10px; padding: 6px 0 0; width: auto; border: 0; color: #87a991; font-size: 11px; }
+.trace-form { margin-top: 0; }
+.connect-intro { padding: 5px 0 14px; }
+.connect-intro p { color: #b1c6b8; font-size: 13px; line-height: 1.8; }
+.connection-help, .connect-intro .connection-help { color: #82a38d; font-size: 11px; line-height: 1.7; margin: 10px 0 0; }
+@media (max-width: 700px) {
+  .github-account { margin-bottom: 22px; }
+  .trace-form .primary { width: 100%; }
+}
+
+.sidebar.is-connected > .eyebrow { font-size: 9px; }
+.sidebar.is-connected h1 { font-size: 28px; letter-spacing: -1px; margin: 12px 0 20px; }
+.sidebar.is-connected h1 br { display: none; }
+.sidebar.is-connected > .intro { display: none; }
+.sidebar.is-connected .github-account { padding: 14px; margin-bottom: 22px; }
+.github-account .github-status > svg { flex-shrink: 0; }
+.github-account .github-status .account-label { font-size: 9px; }
+.trace-form .connection-options { display: grid; gap: 8px; }
+.trace-form .connection-options select { width: 100%; }

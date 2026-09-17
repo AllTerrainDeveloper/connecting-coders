@@ -1,10 +1,9 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import {
   ArrowRight,
-  ArrowUpDown,
   GitFork,
   CodeXml,
   Network,
@@ -21,8 +20,8 @@ import { visibleGraph } from "@/lib/graph/visible";
 import { useConnectionSearch } from "./useConnectionSearch";
 export default function Explorer() {
   const mapSection = useRef<HTMLElement>(null);
-  const [githubConnected, setGitHubConnected] = useState(false);
-  const [source, setSource] = useState("yyx990803");
+  const [source, setSource] = useState<string | null>(null);
+  const accountRef = useRef<string | null>(null);
   const [target, setTarget] = useState("torvalds");
   const [maxHops, setMaxHops] = useState(4);
   const [mode, setMode] = useState<"either" | "mutual">("either");
@@ -43,6 +42,18 @@ export default function Explorer() {
     canResume,
     showDemo,
   } = useConnectionSearch();
+  const onAccount = useCallback(
+    (login: string | null) => {
+      if (accountRef.current !== login) {
+        cancel();
+        setResumeDirty(true);
+        setSelected(null);
+        accountRef.current = login;
+        setSource(login);
+      }
+    },
+    [cancel],
+  );
   const graph = useMemo(() => visibleGraph(result, result.path), [result]);
   const person = result.nodes.find((n) => n.login === selected);
   const jumps = Math.max(0, result.path.length - 1);
@@ -73,141 +84,151 @@ export default function Explorer() {
           </a>
         </header>
         <div className="workspace-body">
-          <aside className="sidebar">
+          <aside className={`sidebar${source ? " is-connected" : ""}`}>
             <div className="eyebrow">HUMAN CONNECTIONS / PUBLIC SIGNALS</div>
             <h1>
               Find your <br />
               way <em>in.</em>
             </h1>
             <p className="intro">
-              Trace the people between you and the developer you want to reach.
+              Connect your GitHub. Discover the people between you and the
+              developer you want to reach.
             </p>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!githubConnected) return;
-                setSelected(null);
-                setResumeDirty(false);
-                void search(source, target, maxHops, mode);
-                if (window.innerWidth <= 700)
-                  requestAnimationFrame(() =>
-                    mapSection.current?.scrollIntoView({
-                      behavior: window.matchMedia(
-                        "(prefers-reduced-motion: reduce)",
-                      ).matches
-                        ? "auto"
-                        : "smooth",
-                      block: "start",
-                    }),
-                  );
-              }}
-            >
-              <label htmlFor="source">Your starting point</label>
-              <div className="input-shell">
-                <span>@</span>
-                <input
-                  id="source"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  required
-                  maxLength={40}
-                  value={source}
-                  disabled={busy}
-                  onChange={(e) => {
-                    setSource(e.target.value);
-                    setResumeDirty(true);
-                  }}
-                />
-              </div>
-              <div className="between-inputs">
-                <div className="connector-line" />
-                <button
-                  type="button"
-                  className="swap"
-                  aria-label="Swap starting point and destination"
-                  disabled={busy}
-                  onClick={() => {
-                    setSource(target);
-                    setTarget(source);
-                    setResumeDirty(true);
+            <GitHubStatus
+              remaining={isDemo ? undefined : result.remaining}
+              searchError={error}
+              onConnected={onAccount}
+            />
+            <AnimatePresence initial={false}>
+              {source ? (
+                <motion.form
+                  key={source}
+                  className="trace-form"
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.5 }}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!source) return;
+                    setSelected(null);
+                    setResumeDirty(false);
+                    void search(source, target, maxHops, mode);
+                    if (window.innerWidth <= 700)
+                      requestAnimationFrame(() =>
+                        mapSection.current?.scrollIntoView({
+                          behavior: window.matchMedia(
+                            "(prefers-reduced-motion: reduce)",
+                          ).matches
+                            ? "auto"
+                            : "smooth",
+                          block: "start",
+                        }),
+                      );
                   }}
                 >
-                  <ArrowUpDown size={14} />
-                </button>
-              </div>
-              <label htmlFor="target">Who do you want to reach?</label>
-              <div className="input-shell">
-                <span>@</span>
-                <input
-                  id="target"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  required
-                  maxLength={40}
-                  value={target}
-                  disabled={busy}
-                  onChange={(e) => {
-                    setTarget(e.target.value);
-                    setResumeDirty(true);
-                  }}
-                />
-              </div>
-              <div className="connection-options">
-                <label htmlFor="connection-mode">Connection type</label>
-                <select
-                  id="connection-mode"
-                  value={mode}
-                  disabled={busy}
-                  onChange={(e) => {
-                    setMode(e.target.value as "either" | "mutual");
-                    setResumeDirty(true);
-                  }}
-                >
-                  <option value="either">Either direction</option>
-                  <option value="mutual">Mutual follows only</option>
-                </select>
-              </div>
-              <div className="search-options">
-                <label htmlFor="depth">Look up to</label>
-                <select
-                  id="depth"
-                  value={maxHops}
-                  disabled={busy}
-                  onChange={(e) => {
-                    setMaxHops(Number(e.target.value));
-                    setResumeDirty(true);
-                  }}
-                >
-                  {[2, 3, 4, 5, 6].map((n) => (
-                    <option key={n} value={n}>
-                      {n} jumps
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {busy ? (
-                <button key="pause" className="primary" type="button" onClick={(event) => {
-                  event.preventDefault();
-                  cancel();
-                }}>
-                  <LoaderCircle size={17} className="spin" /> Pause exploration
-                </button>
+                  <label htmlFor="target">Who do you want to reach?</label>
+                  <div className="input-shell">
+                    <span>@</span>
+                    <input
+                      id="target"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      required
+                      maxLength={40}
+                      value={target}
+                      disabled={busy}
+                      onChange={(e) => {
+                        setTarget(e.target.value);
+                        setResumeDirty(true);
+                      }}
+                    />
+                  </div>
+                  <div className="connection-options">
+                    <label htmlFor="connection-mode">Connection type</label>
+                    <select
+                      id="connection-mode"
+                      value={mode}
+                      disabled={busy}
+                      onChange={(e) => {
+                        setMode(e.target.value as "either" | "mutual");
+                        setResumeDirty(true);
+                      }}
+                    >
+                      <option value="either">Followers + following</option>
+                      <option value="mutual">Mutual follows only</option>
+                    </select>
+                  </div>
+                  <p className="connection-help">
+                    {mode === "either"
+                      ? "A follow in either direction connects two people."
+                      : "Both people must follow each other."}
+                  </p>
+                  <div className="search-options">
+                    <label htmlFor="depth">Look up to</label>
+                    <select
+                      id="depth"
+                      value={maxHops}
+                      disabled={busy}
+                      onChange={(e) => {
+                        setMaxHops(Number(e.target.value));
+                        setResumeDirty(true);
+                      }}
+                    >
+                      {[2, 3, 4, 5, 6].map((n) => (
+                        <option key={n} value={n}>
+                          {n} jumps
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {busy ? (
+                    <button
+                      key="pause"
+                      className="primary"
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        cancel();
+                      }}
+                    >
+                      <LoaderCircle size={17} className="spin" /> Pause
+                      exploration
+                    </button>
+                  ) : (
+                    <button key="start" className="primary" type="submit">
+                      Initiate trace <ArrowRight size={18} />
+                    </button>
+                  )}
+                  {canResume && !resumeDirty && source && (
+                    <button
+                      type="button"
+                      className="resume-button"
+                      onClick={resume}
+                    >
+                      Resume exploration <ArrowRight size={16} />
+                    </button>
+                  )}
+                </motion.form>
               ) : (
-                <button key="start" className="primary" type="submit" disabled={!githubConnected}>
-                  {githubConnected ? "Initiate trace" : "Connect GitHub to trace"} <ArrowRight size={18} />
-                </button>
-              )}
-              {canResume && !resumeDirty && githubConnected && (
-                <button
-                  type="button"
-                  className="resume-button"
-                  onClick={resume}
+                <motion.div
+                  key="connect-intro"
+                  className="connect-intro"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
                 >
-                  Resume exploration <ArrowRight size={16} />
-                </button>
+                  <span className="eyebrow">YOUR NETWORK STARTS WITH YOU</span>
+                  <p>
+                    Sign in, choose a developer, then follow the connections
+                    through 3D space.
+                  </p>
+                  <p className="connection-help">
+                    We explore followers and following. Public connections only.
+                  </p>
+                </motion.div>
               )}
-            </form>
-            <GitHubStatus remaining={isDemo ? undefined : result.remaining} searchError={error} onConnected={setGitHubConnected} />
+            </AnimatePresence>
             <div className="search-meta">
               <span>
                 {busy

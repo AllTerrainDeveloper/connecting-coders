@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { GitHubAuth, type AuthConfig } from "../lib/github/auth/service";
+import { browserIdentity, startBrowserLogin } from "../lib/github/auth/browser";
 import { digest, seal, unseal } from "../lib/github/auth/crypto";
 import type { Attempt, AuthStore, Session } from "../lib/github/auth/store";
 class MemoryStore implements AuthStore {
@@ -57,18 +58,16 @@ function cookies(response: Response) {
 function fixture() {
   const store = new MemoryStore();
   let now = 1000;
-  const transport = vi
-    .fn()
-    .mockImplementation(async (url: string) =>
-      url.includes("access_token")
-        ? Response.json({
-            access_token: "user-token",
-            token_type: "bearer",
-            scope: "",
-            expires_in: 3600,
-          })
-        : Response.json({ login: "alice" }),
-    );
+  const transport = vi.fn().mockImplementation(async (url: string) =>
+    url.includes("access_token")
+      ? Response.json({
+          access_token: "user-token",
+          token_type: "bearer",
+          scope: "",
+          expires_in: 3600,
+        })
+      : Response.json({ login: "alice" }),
+  );
   const auth = new GitHubAuth(config, store, transport, () => now);
   const start = () =>
     auth.start(request("/api/github/auth/start", "", "POST"), "viewer-a");
@@ -252,5 +251,84 @@ describe("per-visitor GitHub OAuth sessions", () => {
     await expect(
       unseal(changed, config.encryptionKey, "owner-a"),
     ).rejects.toThrow();
+  });
+});
+
+describe("standalone browser identity", () => {
+  it("completes GitHub login without a hosting-provider identity", async () => {
+    const f = fixture();
+    const start = await startBrowserLogin(
+      f.auth,
+      request("/api/github/auth/start", "", "POST"),
+    );
+    const binding = cookies(start);
+    expect(
+      start.headers
+        .getSetCookie()
+        .find((c) => c.startsWith("__Host-cc_browser=")),
+    ).toMatch(/Path=\/; HttpOnly; SameSite=Lax; Secure$/);
+    const viewer = await browserIdentity(request("/", binding));
+    expect(viewer).toBeTruthy();
+    const completed = await f.finish(start, viewer!);
+    const sessionRequest = request("/", binding + "; " + cookies(completed));
+    expect(
+      (
+        await f.auth.credential(
+          sessionRequest,
+          (await browserIdentity(sessionRequest))!,
+        )
+      )?.login,
+    ).toBe("alice");
+    const other = await startBrowserLogin(
+      f.auth,
+      request("/api/github/auth/start", "", "POST"),
+    );
+    const otherViewer = await browserIdentity(request("/", cookies(other)));
+    expect(await f.auth.credential(sessionRequest, otherViewer!)).toBeNull();
+  });
+  it("does not create a browser binding for a cross-site login attempt", async () => {
+    const f = fixture();
+    const response = await startBrowserLogin(
+      f.auth,
+      request("/api/github/auth/start", "", "POST", "https://evil.test"),
+    );
+    expect(response.status).toBe(403);
+    expect(response.headers.getSetCookie()).toEqual([]);
+    expect(f.store.attempts.size).toBe(0);
+  });
+  it("rejects duplicate and malformed browser cookies and ignores forged hosting headers", async () => {
+    expect(
+      await browserIdentity(
+        new Request(config.origin, {
+          headers: { "x-openai-user-id": "someone" },
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      await browserIdentity(request("/", "__Host-cc_browser=invalid")),
+    ).toBeNull();
+    const valid = "__Host-cc_browser=" + "a".repeat(43);
+    expect(
+      await browserIdentity(request("/", valid + "; " + valid)),
+    ).toBeNull();
+  });
+  it("keeps the browser binding stable when reconnecting", async () => {
+    const f = fixture();
+    const first = await startBrowserLogin(
+      f.auth,
+      request("/api/github/auth/start", "", "POST"),
+    );
+    const second = await startBrowserLogin(
+      f.auth,
+      request("/api/github/auth/start", cookies(first), "POST"),
+    );
+    expect(
+      second.headers
+        .getSetCookie()
+        .some((c) => c.startsWith("__Host-cc_browser=")),
+    ).toBe(false);
+    expect(
+      new Set([...f.store.attempts.values()].map((a) => a.viewer)).size,
+    ).toBe(1);
   });
 });

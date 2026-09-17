@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { browserIdentity } from "@/lib/github/auth/browser";
 import { githubAuth } from "@/lib/github/auth/runtime";
 import { privateHeaders } from "@/lib/github/auth/service";
 import { proxyGitHub } from "@/lib/github/proxy";
@@ -6,19 +6,18 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const auth = githubAuth();
-    const viewer = await getChatGPTUser();
+    const viewer = await browserIdentity(request);
     const base = {
       configured: Boolean(auth),
       authenticated: false,
-      needsSiteSignIn: !viewer,
     };
     if (!viewer || !auth)
       return Response.json(base, { headers: privateHeaders });
-    const session = await auth.credential(request, viewer.userId);
+    const session = await auth.credential(request, viewer);
     if (!session) return Response.json(base, { headers: privateHeaders });
     const quotaResponse = await proxyGitHub(request, session.token);
     if (quotaResponse.status === 401) {
-      await auth.forget(request, viewer.userId);
+      await auth.forget(request, viewer);
       return Response.json(
         { ...base, expired: true },
         { headers: privateHeaders },
