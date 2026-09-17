@@ -184,11 +184,14 @@ export default function Explorer() {
                 </select>
               </div>
               {busy ? (
-                <button className="primary" type="button" onClick={cancel}>
+                <button key="pause" className="primary" type="button" onClick={(event) => {
+                  event.preventDefault();
+                  cancel();
+                }}>
                   <LoaderCircle size={17} className="spin" /> Pause exploration
                 </button>
               ) : (
-                <button className="primary" type="submit">
+                <button key="start" className="primary" type="submit">
                   Initiate trace <ArrowRight size={18} />
                 </button>
               )}
