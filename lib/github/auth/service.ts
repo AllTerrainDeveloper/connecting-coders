@@ -120,7 +120,11 @@ export class GitHubAuth {
     const url = new URL(request.url),
       state = url.searchParams.get("state");
     const clear = this.cookie(STATE_COOKIE, "", 0);
-    const fail = () => this.redirect("/?github=failed", [clear]);
+    let stage = "state";
+    const fail = (detail?: string) => {
+      console.error("GitHub OAuth callback failed", { stage, ...(detail ? { detail } : {}) });
+      return this.redirect("/?github=failed", [clear]);
+    };
     if (
       request.method !== "GET" ||
       url.origin !== this.config.origin ||
@@ -129,6 +133,7 @@ export class GitHubAuth {
       url.searchParams.getAll("state").length !== 1
     )
       return fail();
+    stage = "attempt";
     const attempt = await this.store.consumeAttempt(
       await digest(state),
       viewer,
@@ -145,11 +150,13 @@ export class GitHubAuth {
     )
       return fail();
     try {
+      stage = "pkce";
       const verifier = await unseal(
         attempt.verifier,
         this.config.encryptionKey,
         `pkce:${viewer}:${attempt.stateHash}`,
       );
+      stage = "token-exchange";
       const tokenResponse = await this.transport(
         "https://github.com/login/oauth/access_token",
         {
@@ -169,10 +176,18 @@ export class GitHubAuth {
           }),
         },
       );
-      if (!tokenResponse.ok) return fail();
-      const token = tokenSchema.parse(await tokenResponse.json());
+      if (!tokenResponse.ok) return fail(`HTTP ${tokenResponse.status}`);
+      const tokenData: unknown = await tokenResponse.json();
+      const error = z.object({ error: z.enum(["incorrect_client_credentials", "redirect_uri_mismatch", "bad_verification_code", "unverified_user_email"]) }).safeParse(tokenData);
+      if (error.success) return fail(error.data.error);
+      stage = "token-validation";
+      const parsed = tokenSchema.safeParse(tokenData);
+      if (!parsed.success) return fail(parsed.error.issues.map((issue) => issue.path.join(".")).join(","));
+      const token = parsed.data;
       // This integration is public-data only. Reject accidentally over-scoped app grants.
+      stage = "permissions";
       if (token.scope?.trim()) return fail();
+      stage = "profile";
       const profileResponse = await this.transport(
         "https://api.github.com/user",
         {
@@ -185,10 +200,11 @@ export class GitHubAuth {
           },
         },
       );
-      if (!profileResponse.ok) return fail();
+      if (!profileResponse.ok) return fail(`HTTP ${profileResponse.status}`);
       const profile = accountSchema.parse(await profileResponse.json());
       const id = randomToken(),
         idHash = await digest(id);
+      stage = "session-storage";
       await this.store.saveSession({
         idHash,
         viewer,
