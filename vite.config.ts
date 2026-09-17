@@ -1,3 +1,4 @@
+import { githubDevAuth } from "./build/github-dev-plugin";
 import vinext from "vinext";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
@@ -56,6 +57,7 @@ export default defineConfig(async () => {
       ...(isCodexSeatbeltSandbox ? { watch: { useFsEvents: false, usePolling: true } } : {}),
     },
     plugins: [
+      githubDevAuth(),
       vinext(),
       sites({ mockAuth: !managedLinux }),
       cloudflare({

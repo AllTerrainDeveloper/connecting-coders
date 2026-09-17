@@ -35,3 +35,27 @@ export function shortestPath(
   }
   return [];
 }
+
+/** Follow evidence remains directed; traversal policy is explicit and separate. */
+export function connectionPath(
+  edges: FollowEdge[],
+  source: string,
+  target: string,
+  maxHops: number,
+  mode: "following" | "either" | "mutual",
+): string[] {
+  if (mode === "following") return shortestPath(edges, source, target, maxHops);
+  const observed = new Set(
+    edges.map((edge) => `${edge.source}>${edge.target}`),
+  );
+  const traversal: FollowEdge[] = [];
+  for (const edge of edges) {
+    if (mode === "mutual" && !observed.has(`${edge.target}>${edge.source}`))
+      continue;
+    traversal.push(edge, { source: edge.target, target: edge.source });
+  }
+  return shortestPath(traversal, source, target, maxHops);
+}
+export function connectionKey(source: string, target: string): string {
+  return [source, target].sort().join("~");
+}

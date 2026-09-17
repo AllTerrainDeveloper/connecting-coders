@@ -16,7 +16,7 @@ export class GitHubError extends Error {
   constructor(
     message: string,
     public readonly kind:
-      "rate-limit" | "not-found" | "network" | "invalid" | "budget",
+      "rate-limit" | "not-found" | "network" | "invalid" | "budget" | "auth",
   ) {
     super(message);
     this.name = "GitHubError";
@@ -67,7 +67,7 @@ export class GitHubClient implements GraphProvider {
     this.requests++;
     let response: Response;
     try {
-      response = await this.transport(`https://api.github.com${path}`, {
+      response = await this.transport(`/api/github${path}`, {
         signal: AbortSignal.any([signal, AbortSignal.timeout(12_000)]),
         headers: { Accept: "application/vnd.github+json" },
       });
@@ -91,6 +91,8 @@ export class GitHubClient implements GraphProvider {
         "rate-limit",
       );
     }
+    if (response.status === 401)
+      throw new GitHubError("GitHub access needs reconnecting. Check your server sign-in and reload the app.", "auth");
     if (response.status === 404)
       throw new GitHubError(
         "That GitHub user could not be found. Check the username.",
@@ -137,8 +139,11 @@ export class GitHubClient implements GraphProvider {
     login: string,
     direction: "following" | "followers",
     signal: AbortSignal,
+    page = 1,
   ): Promise<Neighbors> {
-    const path = `/users/${normalizeLogin(login)}/${direction}?per_page=100&page=1`;
+    if (!Number.isInteger(page) || page < 1)
+      throw new GitHubError("Invalid page number.", "invalid");
+    const path = `/users/${normalizeLogin(login)}/${direction}?per_page=100&page=${page}`;
     const result = await this.get(path, signal);
     const parsed = z.array(userSchema).safeParse(result.value);
     if (!parsed.success)

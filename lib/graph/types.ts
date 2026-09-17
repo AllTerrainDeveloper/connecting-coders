@@ -17,8 +17,12 @@ export interface SearchProgress extends Graph {
   expanded: number;
   truncated: boolean;
   remaining?: number;
+  pages?: number;
+  pending?: number;
 }
+export type ConnectionMode = "following" | "either" | "mutual";
 export interface SearchResult extends SearchProgress {
+  mode?: ConnectionMode;
   path: string[];
   outcome: "found" | "limited" | "not-found";
 }
@@ -32,6 +36,7 @@ export interface GraphProvider {
     login: string,
     direction: "following" | "followers",
     signal: AbortSignal,
+    page?: number,
   ): Promise<Neighbors>;
   readonly requests: number;
   readonly remaining?: number;

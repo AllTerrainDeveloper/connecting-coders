@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import {
@@ -13,30 +13,45 @@ import {
   LoaderCircle,
   Users,
 } from "lucide-react";
+import GitHubStatus from "./GitHubStatus";
 import GraphCanvas from "./GraphCanvas";
 import PathDetails from "./PathDetails";
+import DiscoveryConsole from "./DiscoveryConsole";
+import { visibleGraph } from "@/lib/graph/visible";
 import { useConnectionSearch } from "./useConnectionSearch";
 export default function Explorer() {
+  const mapSection = useRef<HTMLElement>(null);
   const [source, setSource] = useState("yyx990803");
   const [target, setTarget] = useState("torvalds");
   const [maxHops, setMaxHops] = useState(4);
+  const [mode, setMode] = useState<"either" | "mutual">("either");
+  const [resumeDirty, setResumeDirty] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [showPeople, setShowPeople] = useState(false);
-  const { result, isDemo, busy, error, search, cancel, showDemo } =
-    useConnectionSearch();
-  const graph = useMemo(
-    () => ({ nodes: result.nodes, edges: result.edges }),
-    [result.nodes, result.edges],
-  );
+  const [peoplePage, setPeoplePage] = useState(0);
+  const {
+    result,
+    isDemo,
+    busy,
+    error,
+    phase,
+    batch,
+    search,
+    cancel,
+    resume,
+    canResume,
+    showDemo,
+  } = useConnectionSearch();
+  const graph = useMemo(() => visibleGraph(result, result.path), [result]);
   const person = result.nodes.find((n) => n.login === selected);
   const jumps = Math.max(0, result.path.length - 1);
   const title = isDemo
-    ? "A few hellos away."
+    ? "Follow the signal."
     : busy
-      ? "Following the connections…"
+      ? "Tracing the network."
       : result.path.length
-        ? `${jumps} ${jumps === 1 ? "jump" : "jumps"}. A possible way in.`
-        : "Every connection is a starting point.";
+        ? `Signal acquired. ${jumps} ${jumps === 1 ? "hop" : "hops"}.`
+        : "The trace is waiting.";
   return (
     <MotionConfig reducedMotion="user">
       <main className="workspace">
@@ -47,9 +62,7 @@ export default function Explorer() {
               connecting<span className="brand-light">coders</span>
             </span>
           </Link>
-          <span className="top-label">
-            A smaller world, one connection at a time.
-          </span>
+          <span className="top-label">EVERY CONNECTION LEAVES A TRACE</span>
           <a
             href="https://docs.github.com/en/rest/users/followers"
             target="_blank"
@@ -60,19 +73,31 @@ export default function Explorer() {
         </header>
         <div className="workspace-body">
           <aside className="sidebar">
-            <div className="eyebrow">THE HUMAN SIDE OF OPEN SOURCE</div>
+            <div className="eyebrow">HUMAN CONNECTIONS / PUBLIC SIGNALS</div>
             <h1>
-              Who connects <br />
-              you to <em>them?</em>
+              Find your <br />
+              way <em>in.</em>
             </h1>
             <p className="intro">
-              Find the people between you and the developer you want to reach.
+              Trace the people between you and the developer you want to reach.
             </p>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 setSelected(null);
-                void search(source, target, maxHops);
+                setResumeDirty(false);
+                void search(source, target, maxHops, mode);
+                if (window.innerWidth <= 700)
+                  requestAnimationFrame(() =>
+                    mapSection.current?.scrollIntoView({
+                      behavior: window.matchMedia(
+                        "(prefers-reduced-motion: reduce)",
+                      ).matches
+                        ? "auto"
+                        : "smooth",
+                      block: "start",
+                    }),
+                  );
               }}
             >
               <label htmlFor="source">Your starting point</label>
@@ -86,7 +111,10 @@ export default function Explorer() {
                   maxLength={40}
                   value={source}
                   disabled={busy}
-                  onChange={(e) => setSource(e.target.value)}
+                  onChange={(e) => {
+                    setSource(e.target.value);
+                    setResumeDirty(true);
+                  }}
                 />
               </div>
               <div className="between-inputs">
@@ -99,6 +127,7 @@ export default function Explorer() {
                   onClick={() => {
                     setSource(target);
                     setTarget(source);
+                    setResumeDirty(true);
                   }}
                 >
                   <ArrowUpDown size={14} />
@@ -115,8 +144,26 @@ export default function Explorer() {
                   maxLength={40}
                   value={target}
                   disabled={busy}
-                  onChange={(e) => setTarget(e.target.value)}
+                  onChange={(e) => {
+                    setTarget(e.target.value);
+                    setResumeDirty(true);
+                  }}
                 />
+              </div>
+              <div className="connection-options">
+                <label htmlFor="connection-mode">Connection type</label>
+                <select
+                  id="connection-mode"
+                  value={mode}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setMode(e.target.value as "either" | "mutual");
+                    setResumeDirty(true);
+                  }}
+                >
+                  <option value="either">Either direction</option>
+                  <option value="mutual">Mutual follows only</option>
+                </select>
               </div>
               <div className="search-options">
                 <label htmlFor="depth">Look up to</label>
@@ -124,7 +171,10 @@ export default function Explorer() {
                   id="depth"
                   value={maxHops}
                   disabled={busy}
-                  onChange={(e) => setMaxHops(Number(e.target.value))}
+                  onChange={(e) => {
+                    setMaxHops(Number(e.target.value));
+                    setResumeDirty(true);
+                  }}
                 >
                   {[2, 3, 4, 5, 6].map((n) => (
                     <option key={n} value={n}>
@@ -135,24 +185,35 @@ export default function Explorer() {
               </div>
               {busy ? (
                 <button className="primary" type="button" onClick={cancel}>
-                  <LoaderCircle size={17} className="spin" /> Stop search
+                  <LoaderCircle size={17} className="spin" /> Pause exploration
                 </button>
               ) : (
                 <button className="primary" type="submit">
-                  Find a connection <ArrowRight size={18} />
+                  Initiate trace <ArrowRight size={18} />
+                </button>
+              )}
+              {canResume && !resumeDirty && (
+                <button
+                  type="button"
+                  className="resume-button"
+                  onClick={resume}
+                >
+                  Resume exploration <ArrowRight size={16} />
                 </button>
               )}
             </form>
+            <GitHubStatus remaining={isDemo ? undefined : result.remaining} />
             <div className="search-meta">
               <span>
                 {busy
-                  ? `${result.expanded} accounts explored`
-                  : "Up to 24 requests per search"}
+                  ? `${result.pages ?? 0} pages decoded`
+                  : "All pages · 5 seconds per batch"}
               </span>
               <button
                 type="button"
                 onClick={() => {
                   showDemo();
+                  setPeoplePage(0);
                   setSelected(null);
                 }}
               >
@@ -167,7 +228,8 @@ export default function Explorer() {
               )}
               {!isDemo && busy && (
                 <p className="footnote">
-                  Exploring both ends of the path. You can stop at any time.
+                  Exploring every page within your hop limit. Pause whenever you
+                  want.
                 </p>
               )}
             </div>
@@ -179,10 +241,14 @@ export default function Explorer() {
               onSelect={setSelected}
             />
           </aside>
-          <section className="map-panel" aria-label="Network explorer">
+          <section
+            ref={mapSection}
+            className="map-panel"
+            aria-label="Network explorer"
+          >
             <div className="map-heading">
               <div>
-                <span className="eyebrow">CONNECTION EXPLORER</span>
+                <span className="eyebrow">3D SIGNAL SPACE / LIVE TOPOLOGY</span>
                 <div className="title-slot">
                   <AnimatePresence mode="wait" initial={false}>
                     <motion.h2
@@ -199,13 +265,10 @@ export default function Explorer() {
               </div>
               <span className="pill">
                 <Network size={14} />
-                {isDemo
-                  ? "Example network"
-                  : busy
-                    ? "Exploring GitHub"
-                    : "Public follow data"}
+                {isDemo ? "SIMULATION" : busy ? "SCANNING" : "PUBLIC SIGNALS"}
               </span>
             </div>
+            <DiscoveryConsole batch={batch} phase={phase} isDemo={isDemo} />
             <GraphCanvas
               graph={graph}
               path={result.path}
@@ -214,6 +277,10 @@ export default function Explorer() {
             <div className="map-summary">
               <span>{result.nodes.length} developers</span>
               <span>{result.edges.length} connections</span>
+              {(graph.nodes.length < result.nodes.length ||
+                graph.edges.length < result.edges.length) && (
+                <span>{graph.nodes.length} on screen · all data retained</span>
+              )}
               {!isDemo && (
                 <span>
                   {result.requests} requests
@@ -250,20 +317,43 @@ export default function Explorer() {
                     </button>
                   </div>
                   <ul>
-                    {result.nodes.map((n) => (
-                      <li key={n.login}>
-                        <button
-                          onClick={() => {
-                            setSelected(n.login);
-                            setShowPeople(false);
-                          }}
-                        >
-                          @{n.login}
-                          <ArrowRight size={14} />
-                        </button>
-                      </li>
-                    ))}
+                    {result.nodes
+                      .slice(peoplePage * 100, (peoplePage + 1) * 100)
+                      .map((n) => (
+                        <li key={n.login}>
+                          <button
+                            onClick={() => {
+                              setSelected(n.login);
+                              setShowPeople(false);
+                            }}
+                          >
+                            @{n.login}
+                            <ArrowRight size={14} />
+                          </button>
+                        </li>
+                      ))}
                   </ul>
+                  {result.nodes.length > 100 && (
+                    <div className="list-pagination">
+                      <button
+                        disabled={peoplePage === 0}
+                        onClick={() => setPeoplePage((p) => p - 1)}
+                      >
+                        ←
+                      </button>
+                      <span>
+                        {peoplePage * 100 + 1}–
+                        {Math.min((peoplePage + 1) * 100, result.nodes.length)}{" "}
+                        / {result.nodes.length}
+                      </span>
+                      <button
+                        disabled={(peoplePage + 1) * 100 >= result.nodes.length}
+                        onClick={() => setPeoplePage((p) => p + 1)}
+                      >
+                        →
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -322,7 +412,10 @@ export default function Explorer() {
               <span>
                 <i /> Connection path <i className="muted-line" /> Public follow
               </span>
-              <span>Drag to explore · Scroll to zoom</span>
+              <span>
+                Drag to orbit · Scroll or WASD to travel · Click a signal to
+                focus
+              </span>
             </div>
           </section>
           <PathDetails

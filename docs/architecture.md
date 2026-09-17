@@ -1,56 +1,71 @@
 # Architecture and feasibility
 
-## Feasible product, bounded claims
+## Product semantics
 
-GitHub exposes public follows and followers. Those edges can be searched to discover possible chains of introduction. GitHub's API does not expose a verified professional referral network, and a follow alone is weak social evidence. The UX therefore describes public follows, preserves their direction, identifies fictional demo data, and never claims that an introduction is assured.
+The product is an immersive 3D exploration of **directed public follows**, not a verified referral database. `a → b` means account a follows account b. Each edge retains its observed direction in storage. Default route traversal accepts follows in either direction; mutual mode only traverses pairs with both observed follows. The text path and evidence inspector are authoritative; spatial distance is a layout choice, not relationship strength.
 
-Linus Torvalds's GitHub handle is `torvalds`. High-profile accounts are difficult destinations for a cold graph crawl: follower lists can span thousands of pages. Exhaustive crawling under anonymous API quotas is not a viable real-time product promise.
+Linus Torvalds's GitHub handle is `torvalds`. A follow is a possible lead, not proof that someone knows him or can introduce you.
 
-## Why PixiJS
-
-This is a navigation and reading problem on a graph. Two dimensions keep names, hop counts and direction legible. Pixi supplies accelerated rendering, picking and scene containers without a 3D camera, lighting or occlusion problem. React owns the controls and accessible text; Pixi owns graphics resources. Three.js would make sense if spatial depth became a meaningful part of the data, which it currently is not.
-
-## Boundaries
+## Separation of concerns
 
 ```mermaid
 flowchart LR
-  UI[React explorer] --> H[Search lifecycle hook]
-  H --> S[Bounded discovery service]
+  UI[React explorer] --> H[Search lifecycle and pacing]
+  H --> S[Resumable Exploration]
   S --> P[GraphProvider contract]
-  P --> A[GitHub REST adapter]
-  A --> G[Public GitHub API]
-  S --> B[Pure shortest-path search]
-  UI --> V[Pixi view]
-  V --> L[Deterministic layout]
+  P --> A[Validated GitHub adapter]
+  A --> X[Server credential boundary]
+  X --> G[Public GitHub REST API]
+  S --> B[Mode-aware shortest path]
+  UI --> V[Bounded viewport projection]
+  V --> R[Retained Three.js scene]
+  R --> L[Stable 3D layout]
 ```
 
-The search service accepts a provider and an AbortSignal. It does not import React, Pixi, browser storage or the GitHub adapter. The pure graph functions are testable with deterministic in-memory evidence. A future indexed provider can replace the HTTP adapter without rewriting pathfinding or the UI.
+Three.js owns rendering and navigation. React owns readable controls, lifecycle and accessible text. Domain code imports neither. Replacing the HTTP provider with an indexed service does not require rewriting path search or the renderer.
 
-The current service alternates breadth-first discovery from both ends. From the source it requests `following`; from the destination it requests `followers`, storing each returned edge as `follower → destination`. After each expansion it checks the accumulated directed graph for a path. It can stop as soon as it finds one. Alternating expansions and sampled pages do not prove a globally shortest path; only the pure BFS over the observed graph has that guarantee.
+## Exploring all public pages
 
-## Resource policy
+`Exploration` maintains two queues rooted at the source and destination. Both queues explore followers and following lists in either-direction and mutual modes. Each queue item contains an account, list direction, depth and next page. Mutual mode explores the either-direction neighborhood as a superset, then requires reciprocal evidence when searching for a route. This is complete within the requested boundary but can inspect more pages than a specialized mutual-only crawler. A successful response commits evidence and advances that cursor. A failed or cancelled response commits nothing, so retrying cannot skip a page. Each direction deduplicates its queued account lists. Pagination continues through `Link: rel="next"` until a list is exhausted. Expansion stays within the selected 2–6 hop boundary.
 
-- At most 24 HTTP requests, 22 expansions and 400 nodes per search. Each expansion returns at most the first 100 accounts. Edges are deduplicated.
-- Sequential requests avoid bursts; no automatic retries consume additional quota. A 12-second request timeout bounds hangs.
-- The adapter validates payloads using Zod before cache insertion. The cache holds at most 256 endpoint responses with a five-minute TTL. It is memory-only and scoped to the browser page, not persisted across reloads.
-- Rate-limit headers update the available quota. A session-wide cooldown honors reset and retry delays across subsequent searches. GitHub is still the authority across tabs, reloads, browsers and users sharing an IP.
-- Cancellation propagates to fetch; a generation counter prevents old searches from overwriting a newer search or the demo. Partial discovered evidence remains visible after cancellation or an error.
-- Pixi initializes only on the client, loads separately, retains keyed nodes and edges across updates, animates discovery and camera changes, runs a short route-tracing celebration, then stops the ticker, and removes pointer listeners, observers and graphics resources on disposal. Text paths and a developer list remain usable without WebGL.
+A found path does not stop exploration. Breadth-first search over observed edges continually returns the shortest valid path for the selected connection mode within that evidence and hop ceiling. Sampling no longer truncates API adjacency lists at page one. Completeness means the requested public neighborhoods have been exhausted, not that all GitHub accounts have been crawled.
 
-## Deliberate limits of this first implementation
+Entire-network exploration remains infeasible as a real-time anonymous promise: branching grows rapidly, GitHub data changes, private profiles are absent, and public requests normally share a 60/hour IP quota. The app pauses on quota exhaustion and retains its cursor. The reset/cooldown is enforced by the adapter across searches in this page. It does not automatically issue background requests after a reset; the user resumes explicitly.
 
-There is no durable graph database, OAuth, shared backend API cache, ranked referee score, social contact enrichment or automatic outreach. Profiles can be private, API data can change, and page sampling is biased toward GitHub's endpoint ordering. The 400-node cap is a product resource guard, not an assertion about Pixi's maximum capacity. Results are exploratory and not a benchmark of exhaustive graph search.
+## Pacing and lifecycle
 
-Current layout prioritizes a readable path and a stable surrounding network. For thousands of visible nodes, move incremental force layout and search to Web Workers, cluster communities at low zoom, and draw labels only at appropriate zoom levels. Benchmark those changes with realistic graphs before raising limits.
+Every fetched page receives a five-second visual sequence. The domain service performs one page at a time; the React lifecycle awaits an abortable delay between pages. Pacing does not fabricate accounts, affect path correctness, or request unnecessary data. Pausing during the sequence preserves already committed evidence and cancels the remaining timer.
 
-## Scaling into a production discovery service
+A generation counter prevents older requests from overwriting a newer trace or the demo. Resume reuses the same exploration object with a new fetch controller. Memory-only cursors are intentionally lost on reload; durable sessions require a future storage layer.
 
-1. **GitHub App authentication and a server adapter.** Keep installation/user tokens on the server, minimize scopes, and enforce per-user and shared budgets. Authenticated personal REST requests generally permit 5,000 requests/hour, still subject to secondary limits. OAuth does not remove the need for caching or bounded work.
-2. **A durable evidence store.** Store directed edges with `observed_at`, evidence type, source endpoint, and refresh state. Track completeness separately for every adjacency list; an incomplete list is not an empty list. Expire or revalidate edges, including deleted accounts and unfollows.
-3. **A bounded ingestion queue.** Deduplicate jobs, checkpoint pagination, prioritize the two frontiers, honor GitHub backoff headers and cache validators, and publish incremental results to the UI. Never respond to quota exhaustion with parallel retries.
-4. **Indexed searches.** For a moderate graph, PostgreSQL adjacency tables with indexes on `(source, target)` and `(target, source)` are sufficient. Introduce specialized graph infrastructure only after measurements show a need. Return an evidence snapshot and coverage metadata with each route.
-5. **Additional relationship evidence, if desired.** Repository contributions or reviews could suggest stronger ties, but sharing a repository is not proof of interaction. Keep those edge types distinct, explain scores, and never silently turn collaboration evidence into a verified personal relationship.
+## HTTP boundary
 
-## Security and privacy
+The adapter normalizes usernames, rejects invalid input and organization endpoints, validates responses with Zod before caching, limits each HTTP request to 12 seconds, and issues requests serially. Native fetch is called without binding it to the adapter. There are no automatic network retries.
 
-The application only sends public usernames to `api.github.com`. It does not ask for or persist personal access tokens. No messages are sent to anyone. GitHub profile URLs are generated from validated/encoded handles. Sites hosting keeps the preview private to its owner; that access gate is separate from GitHub API authentication.
+The cache holds at most 256 responses for five minutes; hits do not extend freshness. `Link` determines pagination. Rate-limit headers update quota display; reset/retry delays establish a session-wide cooldown. Tokens are neither requested nor stored in the browser. All browser requests target `/api/github/*`. The proxy accepts only public profiles, followers, following and a sanitized quota status endpoint. It rejects writes, unknown paths and arbitrary query parameters, forbids upstream redirects, strips profile fields beyond the app schema and only forwards pagination/quota headers. Errors never echo transport exceptions or credentials.
+
+The hosted Worker reads the `GITHUB_TOKEN` runtime secret and checks the Site visitor identity before requests. The owner-private Site policy governs access; a token's allowance is shared across viewers. Without a secret it uses anonymous GitHub requests. For opt-in local development, a Vite-only plugin reads `gh auth token` into memory, checks localhost host/origin and serves the same proxy. It never puts that token in environment files, Worker bindings or generated bundles. Production builds never invoke `gh`. A dedicated public-data token is required before configuring hosted authentication; a broad CLI credential should remain local.
+
+## The 3D scene
+
+Actual developer nodes have stable spherical coordinates; route anchors form a curve in three dimensions. Nodes interpolate from discovered neighbors into their positions. A custom point shader renders bright centers and soft glows in one draw call. Background stars supply parallax and are explicitly decorative.
+
+A retained `SpaceScene` survives incoming batches. Perspective camera navigation includes orbit, dolly, keyboard translation, node picking/focus, and a route tour. Manual controls cancel camera flights. Labels are camera-facing sprites. The route marker indicates traversal order; the evidence inspector preserves actual follow direction. spatial proximity carries no social meaning.
+
+The scene disposes textures, materials, buffers, controls, event listeners, observers and its animation frame on teardown. Reduced-motion preferences bypass camera interpolation and disable decorative movement. Explicit manual navigation remains available.
+
+## Rendering budget versus discovery budget
+
+Data discovery no longer stops at 400 nodes. To keep rendering predictable, `visibleGraph` selects at most 600 nodes and 5,000 edges, preserving route evidence and prioritizing recent nodes. It never mutates or deletes the complete observed graph. A bounded retirement overlap accommodates fading nodes. All accounts remain accessible through the paginated text list.
+
+Very long sessions can still accumulate substantial browser memory. This implementation is a single-tab explorer, not a durable whole-network index. Before offering unattended or multi-day exploration, add persistent storage, eviction policies and server-managed jobs. Benchmark real graphs before increasing GPU budgets.
+
+## Production scaling
+
+1. **Multi-user authentication and budgets:** evolve the current server token into a GitHub App provider; enforce per-user and shared budgets before expanding access. Authenticated personal REST requests generally allow 5,000/hour but still have secondary limits.
+2. **Durable evidence and cursor store:** preserve directed edges with observation times and provenance. Track per-list completeness, page cursors and refresh state separately. An incomplete list is never equivalent to an empty one.
+3. **Bounded ingestion queue:** deduplicate work, checkpoint pages, respect cooldowns, refresh stale edges and stream committed batches to clients. Never answer quota errors with bursts of retries.
+4. **Indexed graph search:** PostgreSQL adjacency indexes are sufficient for a moderate graph. Use specialized infrastructure only after measurement. Return coverage and snapshot metadata alongside routes.
+5. **Larger 3D scenes:** move layout/search off the main thread, cluster distant communities and use label level-of-detail. Keep a text route and accessible controls available.
+
+Repository co-contribution or review evidence could be added later, but must remain distinct from follows. Sharing a repository alone does not establish that two people know one another. No automated outreach is implemented.

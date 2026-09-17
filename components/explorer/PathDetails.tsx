@@ -110,12 +110,15 @@ export default function PathDetails({
               {isDemo
                 ? "This sample uses fictional people and connections. Search above for real GitHub data."
                 : result.path.length
-                  ? "Each arrow is a public follow in that direction. This is the shortest route in the graph explored, not a guaranteed shortest route across GitHub."
+                  ? result.mode === "mutual"
+                    ? "Every connection in this route has a follow in both directions. Mutual follows still do not guarantee a personal relationship."
+                    : "This route can use a follow in either direction. The evidence panel shows who follows whom. It is the shortest route observed so far."
                   : "Only public follow data is visible. Private profiles and unexamined connections can hide possible paths."}
             </p>
             {!isDemo && !busy && result.truncated && (
               <p className="coverage-note">
-                Partial coverage · some connections remain unexplored
+                {result.pages ?? 0} pages explored · {result.pending ?? 0} lists
+                queued. Resume to continue.
               </p>
             )}
           </motion.div>
